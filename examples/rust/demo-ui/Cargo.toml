@@ -1,0 +1,12 @@
+[package]
+name = "demo-ui"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Local HTTP bridge + single-page UI for interactively driving cpurest calls from a browser."
+
+[dependencies]
+cpurest = { path = "../../../library/rust/cpurest" }
+serde_json = "1"
+futures-executor = "0.3"
+tiny_http = "0.12"

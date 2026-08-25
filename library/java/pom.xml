@@ -1,0 +1,60 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.cpurest</groupId>
+  <artifactId>cpurest-java</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>cpurest-java</name>
+  <description>Declarative @CpuClient / @CpuRestController annotations over the cpurest shared-memory bus, built on the Java 22 Foreign Function &amp; Memory API.</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>22</maven.compiler.release>
+    <junit.version>5.10.3</junit.version>
+  </properties>
+
+  <!--
+    JSON is json-serializer (com.jsonserializer:json-serializer), not
+    Jackson: no reflection, no dependency of its own, hand-written codecs.
+    `mvn install` it from /Users/darshanredkar/darshan/json-serializer
+    first. See com.cpurest.util.Wire for how cpurest bridges its reflective
+    route dispatch to json-serializer's no-reflection codecs.
+  -->
+  <dependencies>
+    <dependency>
+      <groupId>com.jsonserializer</groupId>
+      <artifactId>json-serializer</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.3.1</version>
+        <configuration>
+          <!-- FFM downcalls are restricted methods; recent JDKs only warn today,
+               but pass this explicitly so the command line keeps working once a
+               newer JDK enforces it. -->
+          <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

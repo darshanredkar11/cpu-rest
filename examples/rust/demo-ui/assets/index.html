@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cpurest — instrumentation console</title>
+<style>
+  :root {
+    --bg: #0a0b0d;
+    --panel: #111316;
+    --panel-2: #0d0f12;
+    --border: #22262b;
+    --text: #e8e9ea;
+    --text-dim: #9296a0;
+    --text-muted: #5b5f66;
+    --accent: #4f9fd6;
+    --accent-dim: #2c4f68;
+    --ok: #4a9b6e;
+    --err: #c9584f;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 13px; line-height: 1.5;
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  header {
+    padding: 18px 28px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  header .id { display: flex; align-items: baseline; gap: 10px; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+  header .tag { color: var(--text-muted); font-size: 12px; font-family: var(--mono); }
+  .conn-list { display: flex; gap: 18px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  .conn { display: flex; align-items: center; gap: 6px; }
+  .sq { width: 7px; height: 7px; background: var(--text-muted); flex-shrink: 0; }
+  .sq.up { background: var(--ok); }
+  .sq.down { background: var(--err); }
+
+  main { max-width: 1040px; margin: 0 auto; padding: 20px 28px 60px; display: grid; gap: 18px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .stat { background: var(--panel); padding: 12px 16px; }
+  .stat .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px; }
+  .stat .value { font-size: 20px; font-weight: 600; }
+  .stat .value small { font-size: 11px; color: var(--text-muted); font-weight: 400; margin-left: 2px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); }
+  .panel-head {
+    padding: 9px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-head .title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+  .panel-head .meta { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .panel-body { padding: 14px 16px; }
+
+  canvas#chart { display: block; width: 100%; height: 160px; }
+
+  .console-grid { display: grid; grid-template-columns: 1.2fr 0.7fr 1.3fr; gap: 12px; margin-bottom: 10px; }
+  @media (max-width: 720px) { .console-grid { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 5px; }
+  input, select, textarea {
+    width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 7px 9px; font-family: var(--mono); font-size: 12.5px;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { height: 64px; resize: vertical; }
+  .console-actions { display: flex; justify-content: space-between; align-items: center; }
+  .preset-links { display: flex; gap: 14px; }
+  .preset-links a { font-size: 11.5px; color: var(--accent); text-decoration: none; font-family: var(--mono); cursor: pointer; }
+  .preset-links a:hover { text-decoration: underline; }
+  button.send {
+    font-family: var(--sans); font-weight: 600; font-size: 12.5px; color: var(--bg); background: var(--accent);
+    border: none; padding: 8px 20px; cursor: pointer;
+  }
+  button.send:active { opacity: 0.85; }
+  button.send:disabled { opacity: 0.4; cursor: default; }
+
+  .resp-top { display: flex; align-items: baseline; gap: 16px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .resp-latency { font-size: 28px; font-weight: 600; }
+  .resp-latency small { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 3px; }
+  .resp-status { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border: 1px solid; }
+  .resp-status.ok2xx { color: var(--ok); border-color: var(--ok); }
+  .resp-status.err { color: var(--err); border-color: var(--err); }
+  .resp-route { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  pre.body { margin: 0; font-family: var(--mono); font-size: 12px; overflow-x: auto; max-height: 220px; color: var(--text); }
+  .empty { color: var(--text-muted); font-size: 12.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  thead th {
+    text-align: left; font-weight: 500; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em;
+    color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 6px 8px; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
+  tbody tr:hover td { color: var(--text); }
+  td.num, th.num { text-align: right; }
+  td.status-ok { color: var(--ok); }
+  td.status-err { color: var(--err); }
+  .log-wrap { max-height: 280px; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="id">
+    <h1>cpurest</h1>
+    <span class="tag">instrumentation console</span>
+  </div>
+  <div class="conn-list">
+    <span class="conn"><span class="sq" id="sq-rust"></span>/tax_engine (rust)</span>
+    <span class="conn"><span class="sq" id="sq-java"></span>/java_backend (java)</span>
+  </div>
+</header>
+
+<main>
+  <div class="stats-row" id="stats-row">
+    <div class="stat"><div class="label">requests</div><div class="value num" id="s-count">0</div></div>
+    <div class="stat"><div class="label">min</div><div class="value num" id="s-min">—<small>µs</small></div></div>
+    <div class="stat"><div class="label">p50</div><div class="value num" id="s-p50">—<small>µs</small></div></div>
+    <div class="stat"><div class="label">mean</div><div class="value num" id="s-mean">—<small>µs</small></div></div>
+    <div class="stat"><div class="label">p99</div><div class="value num" id="s-p99">—<small>µs</small></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="title">round-trip latency — last 40 calls</span><span class="meta" id="chart-meta">no data</span></div>
+    <div class="panel-body"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="title">request console</span></div>
+    <div class="panel-body">
+      <div class="console-grid">
+        <div>
+          <label>bus</label>
+          <input id="c-bus" list="bus-options" value="/tax_engine">
+          <datalist id="bus-options"><option value="/tax_engine"><option value="/java_backend"></datalist>
+        </div>
+        <div>
+          <label>method</label>
+          <select id="c-method"><option>GET</option><option selected>POST</option><option>PUT</option><option>DELETE</option></select>
+        </div>
+        <div>
+          <label>path</label>
+          <input id="c-path" value="/calculate">
+        </div>
+      </div>
+      <label>payload (json)</label>
+      <textarea id="c-payload">{"income": 85000, "deductions": 12950}</textarea>
+      <div class="console-actions" style="margin-top:10px">
+        <div class="preset-links">
+          <a onclick="loadPreset('rust')">load: rust /calculate</a>
+          <a onclick="loadPreset('java')">load: java /validate</a>
+        </div>
+        <button class="send" id="send-btn" onclick="customSend()">send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="title">response</span></div>
+    <div class="panel-body">
+      <div id="resp-empty" class="empty">no request sent yet</div>
+      <div id="resp-wrap" style="display:none">
+        <div class="resp-top">
+          <div class="resp-latency num" id="resp-latency">—<small>µs</small></div>
+          <div class="resp-status num" id="resp-status">—</div>
+          <div class="resp-route num" id="resp-route">—</div>
+        </div>
+        <pre class="body" id="resp-json"></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="title">log</span></div>
+    <div class="panel-body log-wrap">
+      <table>
+        <thead><tr><th class="num">#</th><th>bus</th><th>method</th><th>path</th><th class="num">status</th><th class="num">latency</th></tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const samples = [];
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    document.getElementById('sq-rust').className = 'sq ' + (s['/tax_engine'] ? 'up' : 'down');
+    document.getElementById('sq-java').className = 'sq ' + (s['/java_backend'] ? 'up' : 'down');
+  } catch (e) {
+    document.getElementById('sq-rust').className = 'sq down';
+    document.getElementById('sq-java').className = 'sq down';
+  }
+}
+refreshStatus();
+setInterval(refreshStatus, 3000);
+
+function loadPreset(which) {
+  if (which === 'rust') {
+    document.getElementById('c-bus').value = '/tax_engine';
+    document.getElementById('c-method').value = 'POST';
+    document.getElementById('c-path').value = '/calculate';
+    document.getElementById('c-payload').value = '{"income": 85000, "deductions": 12950}';
+  } else {
+    document.getElementById('c-bus').value = '/java_backend';
+    document.getElementById('c-method').value = 'POST';
+    document.getElementById('c-path').value = '/validate';
+    document.getElementById('c-payload').value = '{"income": 85000}';
+  }
+}
+
+function parsePayload(text) {
+  const t = text.trim();
+  return t ? JSON.parse(t) : null;
+}
+
+async function customSend() {
+  const bus = document.getElementById('c-bus').value.trim();
+  const method = document.getElementById('c-method').value;
+  const path = document.getElementById('c-path').value.trim();
+  let payload;
+  try { payload = parsePayload(document.getElementById('c-payload').value); }
+  catch (e) { alert('invalid JSON: ' + e.message); return; }
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bus, method, path, payload })
+    });
+    const data = await res.json();
+    render(data);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function fmt(n) { return (n === undefined || n === null) ? '—' : n.toFixed(1); }
+
+function render(data) {
+  document.getElementById('resp-empty').style.display = 'none';
+  document.getElementById('resp-wrap').style.display = 'block';
+
+  document.getElementById('resp-latency').innerHTML = fmt(data.latency_us) + '<small>µs</small>';
+  const ok2xx = data.ok && data.status >= 200 && data.status < 300;
+  const statusEl = document.getElementById('resp-status');
+  statusEl.textContent = data.status !== undefined ? data.status : 'ERR';
+  statusEl.className = 'resp-status num ' + (ok2xx ? 'ok2xx' : 'err');
+  document.getElementById('resp-route').textContent = (data.method || '') + ' ' + (data.bus || '') + (data.path || '');
+  document.getElementById('resp-json').textContent = JSON.stringify(ok2xx ? data.body : (data.error || data), null, 2);
+
+  if (data.latency_us !== undefined) {
+    samples.push({ t: Date.now(), bus: data.bus, method: data.method, path: data.path, status: data.status, latency_us: data.latency_us, ok: ok2xx });
+    if (samples.length > 200) samples.shift();
+  }
+  updateStats();
+  drawChart();
+  addLogRow(data, ok2xx);
+}
+
+function updateStats() {
+  document.getElementById('s-count').textContent = samples.length;
+  if (samples.length === 0) return;
+  const vals = samples.map(s => s.latency_us).slice().sort((a, b) => a - b);
+  const p = (q) => vals[Math.min(vals.length - 1, Math.floor(vals.length * q))];
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  document.getElementById('s-min').innerHTML = fmt(vals[0]) + '<small>µs</small>';
+  document.getElementById('s-p50').innerHTML = fmt(p(0.5)) + '<small>µs</small>';
+  document.getElementById('s-mean').innerHTML = fmt(mean) + '<small>µs</small>';
+  document.getElementById('s-p99').innerHTML = fmt(p(0.99)) + '<small>µs</small>';
+}
+
+function addLogRow(data, ok2xx) {
+  const tbody = document.getElementById('log-body');
+  const tr = document.createElement('tr');
+  const n = tbody.children.length + 1;
+  tr.innerHTML =
+    '<td class="num">' + n + '</td>' +
+    '<td>' + (data.bus || '') + '</td>' +
+    '<td>' + (data.method || '') + '</td>' +
+    '<td>' + (data.path || '') + '</td>' +
+    '<td class="num ' + (ok2xx ? 'status-ok' : 'status-err') + '">' + (data.status !== undefined ? data.status : 'ERR') + '</td>' +
+    '<td class="num">' + fmt(data.latency_us) + 'µs</td>';
+  tbody.insertBefore(tr, tbody.firstChild);
+  while (tbody.children.length > 100) tbody.removeChild(tbody.lastChild);
+}
+
+function drawChart() {
+  const canvas = document.getElementById('chart');
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || canvas.parentElement.clientWidth;
+  const cssH = 160;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.height = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const win = samples.slice(-40);
+  const meta = document.getElementById('chart-meta');
+  if (win.length < 2) {
+    meta.textContent = win.length === 0 ? 'no data' : 'collecting…';
+    return;
+  }
+
+  const values = win.map(s => s.latency_us);
+  const max = Math.max(...values) * 1.15;
+  const min = 0;
+  meta.textContent = win.length + ' samples · max ' + fmt(Math.max(...values)) + 'µs';
+
+  const padL = 4, padR = 4, padT = 8, padB = 8;
+  const plotW = cssW - padL - padR;
+  const plotH = cssH - padT - padB;
+
+  ctx.strokeStyle = '#1a1d22';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const y = padT + (plotH / 3) * i;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(cssW - padR, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#4f9fd6';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  win.forEach((s, i) => {
+    const x = padL + (plotW * i) / (win.length - 1);
+    const y = padT + plotH - ((s.latency_us - min) / (max - min)) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  const last = win[win.length - 1];
+  const lastX = padL + plotW;
+  const lastY = padT + plotH - ((last.latency_us - min) / (max - min)) * plotH;
+  ctx.fillStyle = last.ok ? '#4a9b6e' : '#c9584f';
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+window.addEventListener('resize', drawChart);
+drawChart();
+</script>
+</body>
+</html>

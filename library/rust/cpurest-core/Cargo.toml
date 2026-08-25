@@ -1,0 +1,10 @@
+[package]
+name = "cpurest-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared-memory transport layer for cpurest: POSIX shm, cache-line-aligned header, SPSC ring channel, hybrid spin/yield sync."
+
+[dependencies]
+libc = "0.2"
+inventory = "0.3"
