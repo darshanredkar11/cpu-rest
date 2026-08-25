@@ -1,5 +1,6 @@
 package com.cpurest.demo;
 
+import json.Codecs;
 import json.JsonCodec;
 import json.JsonField;
 import json.JsonReader;
@@ -10,6 +11,7 @@ public record ValidateResponse(boolean valid, String reason) {
 
     private static final JsonField VALID = JsonField.of("valid");
     private static final JsonField REASON = JsonField.of("reason");
+    private static final JsonCodec<String> NULLABLE_STRING = Codecs.nullable(Codecs.STRING);
 
     public static final JsonCodec<ValidateResponse> CODEC = new JsonCodec<ValidateResponse>() {
         @Override
@@ -17,7 +19,7 @@ public record ValidateResponse(boolean valid, String reason) {
             w.beginObject();
             w.name(VALID).value(v.valid());
             w.name(REASON);
-            if (v.reason() == null) w.nullValue(); else w.value(v.reason());
+            NULLABLE_STRING.write(w, v.reason());
             w.endObject();
         }
 
@@ -28,7 +30,7 @@ public record ValidateResponse(boolean valid, String reason) {
             r.beginObject();
             while (r.nextKey()) {
                 if (r.keyIs(VALID)) valid = r.readBoolean();
-                else if (r.keyIs(REASON)) reason = r.isNull() ? null : r.readString();
+                else if (r.keyIs(REASON)) reason = NULLABLE_STRING.read(r);
                 else r.skipValue();
             }
             return new ValidateResponse(valid, reason);
