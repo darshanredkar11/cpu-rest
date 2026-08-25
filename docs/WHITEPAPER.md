@@ -121,6 +121,17 @@ This is not a claim that cpurest is faster than raw FFI (it isn't, and doesn't t
 
 **Why the Java-as-server direction used to be the slow one, and isn't anymore.** An earlier version of `cpurest-java` used Jackson's `ObjectMapper` for JSON, and Java-as-server settled at a steady-state of ~450–550µs — 15–20× faster than HTTP, but a clear step behind the Rust-as-server direction (which never touched Jackson at all; Rust's `serde_json` isn't reflection-based). Switching to `json-serializer` — a hand-written-codec JSON library with no reflection, no annotations, and one small `JsonCodec<T>` per DTO type (see `com.cpurest.util.Wire` for how cpurest bridges its unavoidably-reflective *route* dispatch to json-serializer's reflection-free *field* access) — removed the actual bottleneck: reflective field-by-field (de)serialization on every call, not `Method.invoke` itself. The table above is measured after that switch. The first call to a given route still costs Java an extra ~2–4.5ms one-time — JVM bytecode-to-`MethodAccessor` reflection inflation and JIT tiering for `Method.invoke` specifically, which the 200-call warmup phase exists to absorb — but steady state no longer has a JSON tax on top of it. The Java-client-to-Rust-server direction improved too (compare this table to the original 9–46µs range from before the switch), for the same reason from the other side: Jackson was cpurest-java's *one* shared codec regardless of role, so every Java-side encode/decode paid its reflection cost whether Java was the client encoding a request or the server encoding a response. Removing it sped up both roles, not just the one that happened to headline the earlier "Java-as-server is slower" finding.
 
+**Isolated, controlled confirmation** (not just inferred from end-to-end system noise): the same process, same JVM run, encoding/decoding the same payloads back to back with Jackson's `ObjectMapper` and json-serializer's hand-written codecs, no shared memory or reflection dispatch involved — purely the JSON step in isolation, JDK 22, Apple Silicon, warmup then best-of-5-runs-of-1M-iterations (methodology matches json-serializer's own `Bench.java`):
+
+| Payload | Op | Jackson | json-serializer | Speedup |
+|---|---|---|---|---|
+| `TaxResponse` (cpurest's actual shape, 2 doubles) | encode | 280.4 ns/op | 200.4 ns/op | 1.4× |
+| | decode | 301.6 ns/op | 131.0 ns/op | 2.3× |
+| `User` (json-serializer's own published benchmark shape: 7 fields, array, nested object) | encode | 399.3 ns/op | 202.6 ns/op | 2.0× |
+| | decode | 587.4 ns/op | 313.3 ns/op | 1.9× |
+
+The `User` row lands close to json-serializer's own README numbers (168/265 ns/op) on different machine state — same order of magnitude, a useful independent cross-check that the library's own published claim holds up outside its own benchmark harness.
+
 ## 6. Engineering Notes
 
 **Why single-slot channels, not a multi-slot ring.** Every usage pattern in scope is synchronous request/response (`client.post(...).await`), with no pipelining requirement. A single-slot ping-pong buffer (`IDLE → READY → consumed → IDLE`) is what a lock-free ring degenerates to for one producer/one consumer with no in-flight overlap, and is far simpler to get correct than a true multi-slot MPMC ring (sequence numbers, wraparound, producer/consumer cursors). It's named `RingChannel` on both sides for parity with the spec's vocabulary and to leave room for the pipelined version described in `docs/PRD.md`'s roadmap.
