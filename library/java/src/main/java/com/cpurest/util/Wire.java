@@ -51,36 +51,69 @@ public final class Wire {
 
     private static final Map<Class<?>, JsonCodec<?>> CODECS = new ConcurrentHashMap<>();
 
-    /** Locates and caches {@code type}'s {@code public static final JsonCodec<type> CODEC} field. */
+    /**
+     * Locates and caches {@code type}'s codec, trying two conventions in
+     * order: a hand-written {@code public static final JsonCodec<type> CODEC}
+     * field directly on {@code type}, then — since a compile-time-generated
+     * annotation processor can only emit a <em>new</em> file, never inject a
+     * field into the type it was told to process — a {@code <Type>Codec}
+     * sibling class in the same package, as produced by
+     * {@code @json.JsonRecord} (see that annotation's javadoc).
+     */
     public static JsonCodec<?> codecFor(Class<?> type) {
         return CODECS.computeIfAbsent(type, Wire::lookupCodec);
     }
 
     private static JsonCodec<?> lookupCodec(Class<?> type) {
-        Field field;
-        try {
-            field = type.getField("CODEC");
-        } catch (NoSuchFieldException e) {
-            throw new WireException(
-                    "cpurest requires a `public static final json.JsonCodec<" + type.getSimpleName()
-                            + "> CODEC` field on " + type.getName()
-                            + " (see json-serializer's README for the pattern) — none found",
-                    e);
+        Field direct = tryGetCodecField(type);
+        if (direct != null) {
+            return readCodecField(direct, type);
         }
+        Class<?> generated = tryLoadClass(type.getName() + "Codec");
+        if (generated != null) {
+            Field generatedField = tryGetCodecField(generated);
+            if (generatedField != null) {
+                return readCodecField(generatedField, generated);
+            }
+        }
+        throw new WireException(
+                "cpurest requires either a `public static final json.JsonCodec<" + type.getSimpleName()
+                        + "> CODEC` field directly on " + type.getName() + ", or that type annotated with "
+                        + "@json.JsonRecord (which generates " + type.getSimpleName()
+                        + "Codec.CODEC) — neither was found");
+    }
+
+    private static Field tryGetCodecField(Class<?> holder) {
+        try {
+            return holder.getField("CODEC");
+        } catch (NoSuchFieldException e) {
+            return null;
+        }
+    }
+
+    private static Class<?> tryLoadClass(String name) {
+        try {
+            return Class.forName(name);
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+    }
+
+    private static JsonCodec<?> readCodecField(Field field, Class<?> holder) {
         if (!Modifier.isStatic(field.getModifiers())) {
-            throw new WireException(type.getName() + ".CODEC must be static");
+            throw new WireException(holder.getName() + ".CODEC must be static");
         }
         if (!JsonCodec.class.isAssignableFrom(field.getType())) {
-            throw new WireException(type.getName() + ".CODEC must be a json.JsonCodec<" + type.getSimpleName() + ">");
+            throw new WireException(holder.getName() + ".CODEC must be a json.JsonCodec<?>");
         }
         try {
             Object codec = field.get(null);
             if (codec == null) {
-                throw new WireException(type.getName() + ".CODEC is null");
+                throw new WireException(holder.getName() + ".CODEC is null");
             }
             return (JsonCodec<?>) codec;
         } catch (IllegalAccessException e) {
-            throw new WireException("could not read " + type.getName() + ".CODEC", e);
+            throw new WireException("could not read " + holder.getName() + ".CODEC", e);
         }
     }
 

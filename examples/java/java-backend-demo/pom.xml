@@ -37,6 +37,23 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
+        <configuration>
+          <!-- Maven's compiler plugin compiles in-process by default, where
+               implicit SPI discovery of annotation processors from the
+               plain compile classpath is unreliable (a known Maven quirk,
+               not specific to this processor — plain `javac` invocations
+               with an identical classpath find it fine). Declaring the
+               path explicitly is the standard fix every Maven-based
+               annotation processor (Lombok, MapStruct, Dagger, ...)
+               documents for exactly this reason. -->
+          <annotationProcessorPaths>
+            <path>
+              <groupId>com.jsonserializer</groupId>
+              <artifactId>json-serializer</artifactId>
+              <version>1.0.0</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
