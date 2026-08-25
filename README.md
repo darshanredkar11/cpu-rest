@@ -11,6 +11,11 @@ let handle = Server::bind("/tax_engine")?.serve();
 ```
 
 ```java
+@JsonRecord // compile-time codec generation, zero reflection — see docs/WHITEPAPER.md §6
+public record TaxRequest(double income, double deductions) {}
+@JsonRecord
+public record TaxResponse(double taxOwed, double effectiveRate) {}
+
 @CpuClient(bus = "/tax_engine")
 interface TaxClient {
     @CpuPost("/calculate")
@@ -32,7 +37,7 @@ Builds the library, then the examples, starts the Rust `tax-engine-rust` example
 
 For an interactive session — a live console in your browser to fire arbitrary requests at either side and watch latency in real time — run `./scripts/run-ui-demo.sh` instead and open `http://127.0.0.1:8089`.
 
-Requires: Rust/Cargo, Maven, and a JDK 22+ on `PATH` (the Java side uses the `java.lang.foreign` Foreign Function & Memory API, stable since JDK 22).
+Requires: Rust/Cargo, Maven, a JDK 22+ on `PATH` (the Java side uses the `java.lang.foreign` Foreign Function & Memory API, stable since JDK 22), and `json-serializer` (`cpurest-java`'s only dependency — no reflection, no Jackson) checked out as a sibling of this repo; the scripts `mvn install` it automatically, but it has to exist on disk first — see `docs/PRD.md`'s Known Limitations.
 
 ## Layout
 

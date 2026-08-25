@@ -42,7 +42,7 @@ The target user is a team running a **modulith-style deployment**: several indep
 ## Functional requirements
 
 1. A route registered on one side must be reachable from the other via the declarative API only — no manual header/offset manipulation exposed to application code.
-2. Request/response bodies are plain Rust structs (de/serialized via `serde_json`) and public Java records exposing a hand-written `json.JsonCodec<T>` (via `json-serializer`, not Jackson — see `docs/WHITEPAPER.md` §6), with wire field names normalized to `snake_case` regardless of the host language's naming convention (see `docs/WHITEPAPER.md` §3).
+2. Request/response bodies are plain Rust structs (de/serialized via `serde_json`) and public Java records exposing a `json.JsonCodec<T>` — hand-written or `@JsonRecord`-generated (via `json-serializer`, not Jackson — see `docs/WHITEPAPER.md` §6), with wire field names normalized to `snake_case` regardless of the host language's naming convention (see `docs/WHITEPAPER.md` §3).
 3. A handler panic (Rust) or uncaught exception (Java) must produce a `500` response with a JSON `{"error": "..."}` body, not a crash or hang.
 4. An unmounted route must produce a `404`, not a hang or a panic.
 5. A client connecting before the server has created the bus must retry (bounded by a timeout) rather than fail immediately.
